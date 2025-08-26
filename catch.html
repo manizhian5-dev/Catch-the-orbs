@@ -1,0 +1,450 @@
+<!DOCTYPE html><html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Catch the Orbs - بازی ساده</title>
+  <style>
+    :root{
+      --bg1:#0f1020; /* تیره-بنفش */
+      --bg2:#1b1e3c; /* سرمه‌ای */
+      --accent:#7c5cff; /* بنفش */
+      --good:#4ade80; /* سبز */
+      --bad:#f43f5e; /* قرمز */
+      --glass: rgba(255,255,255,.1);
+      --txt:#f5f7ff;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0}
+    body{
+      font-family: ui-rounded, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+      color:var(--txt);
+      background: radial-gradient(1200px 700px at 70% -10%, #28306b 0%, transparent 50%),
+                  radial-gradient(1200px 700px at -10% 110%, #1a265d 0%, transparent 50%),
+                  linear-gradient(160deg, var(--bg1), var(--bg2));
+      overflow:hidden;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }/* لایه‌ها */
+#game-wrap{position:relative;width:100vw;height:100vh}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* HUD شیشه‌ای */
+.hud{
+  position:absolute;left:50%;transform:translateX(-50%);
+  top:12px;display:flex;gap:12px;align-items:center;
+  background:var(--glass);backdrop-filter: blur(10px);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:20px;padding:8px 14px;box-shadow:0 10px 30px rgba(0,0,0,.25)
+}
+.pill{display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
+.dot{width:10px;height:10px;border-radius:50%}
+.good{background:var(--good)}
+.bad{background:var(--bad)}
+
+/* دکمه‌ها */
+.controls{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:10px}
+.btn{
+  border:none;border-radius:16px;padding:10px 14px;min-width:56px
+  ;font-weight:700;cursor:pointer;background:var(--glass);color:var(--txt);
+  border:1px solid rgba(255,255,255,.16);backdrop-filter: blur(8px);
+  box-shadow:0 8px 20px rgba(0,0,0,.25);transition:transform .05s ease;
+}
+.btn:active{transform:translateY(1px)}
+
+/* دکمه‌های لمسی چپ/راست */
+.touch-pad{position:absolute;left:0;right:0;bottom:0;height:40%;pointer-events:none}
+.touch-zone{position:absolute;bottom:0;width:50%;height:100%;pointer-events:auto}
+.touch-zone.left{left:0}
+.touch-zone.right{right:0}
+
+/* صفحه شروع/باخت */
+.panel{
+  position:absolute;inset:0;display:grid;place-items:center;padding:24px
+}
+.card{
+  width:min(520px, 92vw);
+  background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06));
+  border:1px solid rgba(255,255,255,.18);backdrop-filter: blur(14px);
+  border-radius:28px;padding:22px 20px 18px;box-shadow:0 25px 60px rgba(0,0,0,.35)
+}
+h1{margin:0 0 8px;font-size:28px}
+p{margin:6px 0 10px;opacity:.95;line-height:1.6}
+.big{font-size:20px;font-weight:800}
+
+/* نوار پیشرفت استریک */
+.streak{
+  position:absolute;top:64px;left:50%;transform:translateX(-50%);
+  width:min(520px,92vw);height:10px;border-radius:999px;overflow:hidden;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.1)
+}
+.streak > div{height:100%;width:0%;background:linear-gradient(90deg, var(--good), var(--accent));transition:width .15s ease}
+
+/* قلب‌ها */
+.hearts{display:flex;gap:6px}
+.heart{filter: drop-shadow(0 2px 6px rgba(0,0,0,.35))}
+
+/* راهنما */
+.kbd{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);font-weight:700}
+.muted{opacity:.8}
+
+a, a:visited{color:#d6ccff}
+
+  </style>
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="game"></canvas><!-- HUD -->
+<div class="hud" id="hud">
+  <div class="pill"><span class="dot good"></span><span>امتیاز:</span><strong id="score">0</strong></div>
+  <div class="pill"><span>بیشترین:</span><strong id="best">0</strong></div>
+  <div class="pill hearts" id="hearts"></div>
+  <button class="btn" id="pauseBtn" title="کلید P">⏸️ توقف</button>
+  <button class="btn" id="restartBtn" title="کلید R">🔄 ریستارت</button>
+</div>
+
+<div class="streak"><div id="streakFill"></div></div>
+
+<!-- لمسی: نیمه چپ=چپ، نیمه راست=راست -->
+<div class="touch-pad" aria-hidden="true">
+  <div class="touch-zone left" id="touchLeft"></div>
+  <div class="touch-zone right" id="touchRight"></div>
+</div>
+
+<!-- صفحه شروع / پایان -->
+<div class="panel" id="startPanel">
+  <div class="card">
+    <h1>🎮 Catch the Orbs</h1>
+    <p class="big">گوهرهای سبز را بگیر، از کره‌های قرمز فرار کن!</p>
+    <p>
+      <span class="kbd">◀︎ ▶︎</span> یا <span class="kbd">A D</span> برای حرکت. 
+      روی نیمهٔ چپ/راست صفحه هم می‌توانی لمس کنی. 
+      <span class="kbd">P</span> توقف، <span class="kbd">R</span> ریستارت.
+    </p>
+    <p class="muted">هر آیتم سبز = +۱ امتیاز. گرفتن پشت‌سرهم (استریک) باعث مولتی‌پلایر می‌شود. برخورد با قرمز یک قلب کم می‌کند.</p>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+      <button class="btn" id="startBtn">شروع بازی ✨</button>
+      <span class="muted">ساخته شده فقط با HTML + CSS + JS</span>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="gameOverPanel" style="display:none">
+  <div class="card">
+    <h1>💥 باختی!</h1>
+    <p>امتیاز تو: <strong id="finalScore">0</strong> — رکورد: <strong id="finalBest">0</strong></p>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+      <button class="btn" id="playAgainBtn">بازی دوباره 🔁</button>
+      <button class="btn" id="closeOverBtn">بستن</button>
+    </div>
+  </div>
+</div>
+
+  </div>  <script>
+    // ====== تنظیمات پایه بازی ======
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const wrap = document.getElementById('game-wrap');
+
+    const hud = {
+      score: document.getElementById('score'),
+      best: document.getElementById('best'),
+      hearts: document.getElementById('hearts'),
+      streakFill: document.getElementById('streakFill'),
+    };
+
+    const panels = {
+      start: document.getElementById('startPanel'),
+      over: document.getElementById('gameOverPanel'),
+    };
+
+    const buttons = {
+      start: document.getElementById('startBtn'),
+      pause: document.getElementById('pauseBtn'),
+      restart: document.getElementById('restartBtn'),
+      again: document.getElementById('playAgainBtn'),
+      closeOver: document.getElementById('closeOverBtn'),
+    };
+
+    const touches = {
+      left: document.getElementById('touchLeft'),
+      right: document.getElementById('touchRight'),
+    };
+
+    // صداهای کوچک با WebAudio (بدون فایل خارجی)
+    let audioCtx;
+    function beep(type='sine', freq=660, t=0.06, vol=0.04){
+      try{
+        audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = type; o.frequency.value = freq; g.gain.value = vol;
+        o.connect(g).connect(audioCtx.destination);
+        o.start();
+        setTimeout(()=>{ o.stop(); }, t*1000);
+      }catch(e){/* بی‌صدا در مرورگرهای محدود */}
+    }
+
+    // مقیاس‌بندی بوم برای وضوح بالا
+    function resize(){
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(wrap.clientWidth * dpr);
+      canvas.height = Math.floor(wrap.clientHeight * dpr);
+      canvas.style.width = wrap.clientWidth + 'px';
+      canvas.style.height = wrap.clientHeight + 'px';
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    // ====== وضعیت بازی ======
+    const state = {
+      running:false,
+      paused:false,
+      over:false,
+      score:0,
+      best: Number(localStorage.getItem('orb-best')||0),
+      lives:3,
+      streak:0, // پی‌درپی‌های سبز
+      streakGoal:8, // تکمیل نوار
+      time:0,
+      spawnTimer:0,
+      items:[], // آیتم‌های در حال سقوط
+      particles:[],
+      input:{left:false,right:false},
+    };
+    hud.best.textContent = state.best;
+
+    // بازیکن
+    const player = {
+      x: canvas.clientWidth/2,
+      y: canvas.clientHeight-80,
+      r: 16,
+      vx:0,
+      ax: 0.9, // شتاب
+      fric: 0.88,
+      max: 7,
+      hue: 265,
+    };
+
+    function reset(){
+      state.running = false; state.paused=false; state.over=false;
+      state.score = 0; state.lives = 3; state.streak=0; state.time=0; state.spawnTimer=0;
+      state.items.length = 0; state.particles.length = 0;
+      player.x = canvas.clientWidth/2; player.vx = 0; player.hue = 265;
+      renderHearts(); updateHUD(); fillStreak();
+    }
+
+    // رسم قلب‌ها
+    function renderHearts(){
+      hud.hearts.innerHTML = '';
+      for(let i=0;i<state.lives;i++){
+        const span = document.createElement('span');
+        span.className='heart';
+        span.textContent='❤️';
+        hud.hearts.appendChild(span);
+      }
+    }
+
+    function updateHUD(){
+      hud.score.textContent = state.score;
+      hud.best.textContent = state.best;
+    }
+
+    function fillStreak(){
+      const p = Math.min(100, Math.floor((state.streak/state.streakGoal)*100));
+      hud.streakFill.style.width = p + '%';
+    }
+
+    // کنترل‌ها
+    const keys = new Set();
+    addEventListener('keydown', e=>{
+      if(['ArrowLeft','ArrowRight','a','d','A','D','p','P','r','R',' '].includes(e.key)) e.preventDefault();
+      if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') state.input.left = true;
+      if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') state.input.right = true;
+      if(e.key==='p'||e.key==='P') togglePause();
+      if(e.key==='r'||e.key==='R') restart();
+    });
+    addEventListener('keyup', e=>{
+      if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') state.input.left = false;
+      if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') state.input.right = false;
+    });
+
+    // لمس ساده: نگه‌داشتن نیمه‌ها
+    function bindTouch(el, dir){
+      let pressing=false; let id=null;
+      const down=(ev)=>{ pressing=true; id = (ev.changedTouches||[])[0]?.identifier ?? null; state.input[dir]=true; };
+      const up=(ev)=>{
+        if(!pressing) return; if(ev.changedTouches){
+          for(const t of ev.changedTouches){ if(t.identifier===id){ pressing=false; state.input[dir]=false; id=null; break; } }
+        }else{ pressing=false; state.input[dir]=false; id=null; }
+      };
+      el.addEventListener('touchstart', down, {passive:false});
+      el.addEventListener('touchend', up); el.addEventListener('touchcancel', up);
+      // همچنین برای کلیک‌های موس (برای تست روی دسکتاپ)
+      el.addEventListener('mousedown', down); addEventListener('mouseup', up);
+    }
+    bindTouch(touches.left, 'left');
+    bindTouch(touches.right, 'right');
+
+    // دکمه‌ها
+    buttons.start.onclick = ()=>{ panels.start.style.display='none'; start(); };
+    buttons.pause.onclick = togglePause;
+    buttons.restart.onclick = restart;
+    buttons.again.onclick = ()=>{ panels.over.style.display='none'; restart(); start(); };
+    buttons.closeOver.onclick = ()=>{ panels.over.style.display='none'; };
+
+    function start(){ state.running=true; state.paused=false; loop(performance.now()); }
+    function togglePause(){ if(!state.running||state.over) return; state.paused=!state.paused; buttons.pause.textContent = state.paused? '▶️ ادامه' : '⏸️ توقف'; if(!state.paused) loop(performance.now()); }
+    function restart(){ reset(); if(panels.start.style.display!=='none') return; state.running=true; state.paused=false; buttons.pause.textContent='⏸️ توقف'; }
+
+    // آیتم‌ها
+    function spawn(){
+      const good = Math.random() < 0.7; // 70% خوب
+      const speed = 2 + Math.random()*2 + Math.min(3, state.time/20000); // با زمان سریع‌تر
+      const size = good ? 12+Math.random()*8 : 12+Math.random()*10;
+      const item = {
+        x: Math.random()*(canvas.clientWidth-40)+20,
+        y: -30,
+        r: size,
+        vy: speed,
+        type: good ? 'good':'bad',
+        rot: Math.random()*Math.PI,
+      };
+      state.items.push(item);
+    }
+
+    function collide(ax, ay, ar, bx, by, br){
+      const dx=ax-bx, dy=ay-by; return (dx*dx+dy*dy) <= (ar+br)*(ar+br);
+    }
+
+    function addParticles(x,y,color='white',count=16){
+      for(let i=0;i<count;i++){
+        state.particles.push({x,y, vx:(Math.random()*2-1)*3, vy:(Math.random()*2-1)*3, life: 500+Math.random()*400, color});
+      }
+    }
+
+    function drawGlowCircle(x,y,r, color){
+      // درخشش ساده
+      const grad = ctx.createRadialGradient(x,y, r*0.2, x,y, r*1.6);
+      grad.addColorStop(0, color);
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x,y,r*1.6,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    }
+
+    // حلقه اصلی
+    let lastTime = 0;
+    function loop(ts){
+      if(!state.running||state.paused) return; // متوقف
+      const dt = Math.min(32, ts - lastTime); lastTime = ts; state.time += dt; state.spawnTimer += dt;
+
+      // اسپاون
+      const spawnDelay = 380 - Math.min(220, Math.floor(state.time/12));
+      if(state.spawnTimer > spawnDelay){ state.spawnTimer=0; spawn(); }
+
+      // منطق بازیکن
+      const W = canvas.clientWidth, H = canvas.clientHeight;
+      if(state.input.left && !state.input.right) player.vx -= player.ax;
+      if(state.input.right && !state.input.left) player.vx += player.ax;
+      if(!state.input.left && !state.input.right) player.vx *= player.fric;
+      player.vx = Math.max(-player.max, Math.min(player.max, player.vx));
+      player.x += player.vx;
+      if(player.x < 20) {player.x = 20; player.vx=0}
+      if(player.x > W-20){player.x = W-20; player.vx=0}
+      player.y = H - 80;
+
+      // آیتم‌ها
+      for(let i=state.items.length-1;i>=0;i--){
+        const it = state.items[i]; it.y += it.vy; it.rot += 0.02;
+        if(collide(player.x, player.y, player.r, it.x, it.y, it.r)){
+          if(it.type==='good'){
+            state.streak++; const mult = 1 + Math.floor(state.streak/5); state.score += mult; updateHUD(); fillStreak();
+            player.hue = 200 + Math.min(150, state.streak*8);
+            addParticles(it.x, it.y, 'rgba(74,222,128,.9)', 22);
+            beep('sine', 520 + state.streak*8, .05, .05);
+          }else{
+            state.lives--; state.streak=0; fillStreak(); renderHearts(); addParticles(it.x, it.y, 'rgba(244,63,94,.9)', 26); beep('triangle', 160, .08, .06);
+            if(state.lives<=0){ gameOver(); return; }
+          }
+          state.items.splice(i,1); continue;
+        }
+        if(it.y - it.r > H+40){ state.items.splice(i,1); }
+      }
+
+      // ذرات
+      for(let i=state.particles.length-1;i>=0;i--){
+        const p = state.particles[i]; p.x += p.vx; p.y += p.vy; p.vx *= .985; p.vy *= .985; p.life -= dt;
+        if(p.life<=0) state.particles.splice(i,1);
+      }
+
+      // رسم
+      ctx.clearRect(0,0,W,H);
+
+      // پس‌زمینه ستاره‌ای ساده
+      drawParallax(ts);
+
+      // آیتم‌ها را رسم کن
+      for(const it of state.items){
+        if(it.type==='good'){
+          drawGlowCircle(it.x, it.y, it.r, 'rgba(74,222,128,.9)');
+        }else{
+          // قرمز با حلقه چرخان
+          drawGlowCircle(it.x, it.y, it.r, 'rgba(244,63,94,.9)');
+          ctx.save(); ctx.translate(it.x,it.y); ctx.rotate(it.rot);
+          ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth=2; ctx.beginPath();
+          ctx.ellipse(0,0,it.r*1.4, it.r*0.5, 0, 0, Math.PI*2); ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // بازیکن
+      const color = `hsl(${player.hue}, 95%, 65%)`;
+      drawGlowCircle(player.x, player.y, player.r+2, color);
+      // چشم‌های کوچک
+      ctx.fillStyle = 'rgba(0,0,0,.8)';
+      ctx.beginPath(); ctx.arc(player.x-6, player.y-4, 2.2, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(player.x+6, player.y-4, 2.2, 0, Math.PI*2); ctx.fill();
+
+      // ذرات
+      for(const p of state.particles){ ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 3, 3); }
+
+      requestAnimationFrame(loop);
+    }
+
+    // پس‌زمینه پارالاکس ستاره‌ای
+    const starsA = Array.from({length:70}, ()=>({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,s:Math.random()*2+.5}));
+    const starsB = Array.from({length:40}, ()=>({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,s:Math.random()*3+1.4}));
+    function drawParallax(t){
+      const W=canvas.clientWidth,H=canvas.clientHeight;
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      for(const st of starsA){
+        const y = (st.y + (t*0.02*st.s)) % (H+5); const x=st.x;
+        ctx.fillStyle='rgba(255,255,255,.6)'; ctx.fillRect(x,y,2,2);
+      }
+      ctx.globalAlpha = 0.45;
+      for(const st of starsB){
+        const y = (st.y + (t*0.04*st.s)) % (H+5); const x=st.x;
+        ctx.fillStyle='rgba(200,220,255,.8)'; ctx.fillRect(x,y,3,3);
+      }
+      ctx.restore();
+      // کف نرم
+      const grd = ctx.createLinearGradient(0,H-140,0,H);
+      grd.addColorStop(0,'rgba(124,92,255,0)'); grd.addColorStop(1,'rgba(124,92,255,.18)');
+      ctx.fillStyle=grd; ctx.fillRect(0,H-140,W,160);
+    }
+
+    function gameOver(){
+      state.over=true; state.running=false; panels.over.style.display='grid';
+      buttons.pause.textContent='⏸️ توقف';
+      if(state.score>state.best){ state.best = state.score; localStorage.setItem('orb-best', String(state.best)); }
+      document.getElementById('finalScore').textContent = state.score;
+      document.getElementById('finalBest').textContent = state.best;
+      updateHUD();
+      beep('sawtooth', 120, .2, .04);
+    }
+
+    // شروع اولیه
+    reset();
+  </script></body>
+</html>
